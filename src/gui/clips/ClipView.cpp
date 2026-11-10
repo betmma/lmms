@@ -1047,6 +1047,31 @@ void ClipView::paste()
 
 	TrackContentWidget *tcw = getTrackView()->getTrackContentWidget();
 
+	if (m_clip->getTrack()->trackContainer() == Engine::patternStore())
+	{
+		if (!tcw->canPasteSelection(clipPos, getMimeData())) { return; }
+
+		DataFile dataFile(decodeValue(getMimeData()).toUtf8());
+		const auto clips = dataFile.content().firstChildElement("clips");
+		if (clips.childNodes().length() != 1) { return; }
+		auto clipElement = clips.firstChildElement().firstChildElement();
+		if (clipElement.isNull()) { return; }
+
+		// Pattern playback uses the clip's index in its track, whereas the
+		// editor uses its position. Appending a replacement and removing the
+		// original shifts those indices, so restore into the existing clip.
+		// Keep its position throughout restoration, including emitted signals.
+		clipElement.setAttribute("pos", clipPos.getTicks());
+		{
+			auto guard = Engine::audioEngine()->requestChangesGuard();
+			m_clip->getTrack()->addJournalCheckPoint();
+			m_clip->restoreState(clipElement);
+		}
+		AutomationClip::resolveAllIDs();
+		Engine::getSong()->setModified();
+		return;
+	}
+
 	if( tcw->pasteSelection( clipPos, getMimeData() ) )
 	{
 		// If we succeed on the paste we delete the Clip we pasted on
